@@ -1,0 +1,243 @@
+---
+title: "healthcare chatbot"
+
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Install and Load the Required Packages
+```{STEP 1}
+
+.libPaths()
+
+
+lapply(.libPaths(), list.files)
+
+
+if (require("languageserver")) {
+  require("languageserver")
+} else {
+  install.packages("languageserver", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+  
+  
+## readr ----
+if (require("readr")) {
+  require("readr")
+} else {
+  install.packages("readr", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## naniar ----
+if (require("naniar")) {
+  require("naniar")
+} else {
+  install.packages("naniar", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## ggplot2 ----
+if (require("ggplot2")) {
+  require("ggplot2")
+} else {
+  install.packages("ggplot2", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## corrplot ----
+if (require("corrplot")) {
+  require("corrplot")
+} else {
+  install.packages("corrplot", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## ggcorrplot ----
+if (require("ggcorrplot")) {
+  require("ggcorrplot")
+} else {
+  install.packages("ggcorrplot", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## caret ----
+if (require("caret")) {
+  require("caret")
+} else {
+  install.packages("caret", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## tidyverse ----
+if (require("tidyverse")) {
+  require("tidyverse")
+} else {
+  install.packages("tidyverse", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+  
+## httr ----
+if (require("httr")) {
+  require("httr")
+} else {
+  install.packages("httr", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## jsonlite ----
+if (require("jsonlite")) {
+  require("jsonlite")
+} else {
+  install.packages("jsonlite", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+```
+
+
+
+Load and view the Dataset
+```{STEP 2}
+
+library(readr)
+Training.csv <- read_csv("Training.csv")
+View(Training.csv)
+
+str(Training.csv)
+dim(Training.csv)
+head(Training.csv)
+summary(Training.csv)
+
+```
+
+
+
+Checking for Missing Data and Address it (Only if applicable)
+```{STEP 3}
+
+# Are there missing values in the dataset?
+any_na(Training.csv)
+
+# How many?
+n_miss(Training.csv)
+
+# What is the proportion of missing data in the entire dataset?
+prop_miss(Training.csv)
+
+# What is the number and percentage of missing values grouped by
+# each variable?
+miss_var_summary(Training.csv)
+
+# Which variables contain the most missing values?
+gg_miss_var(Training.csv)
+
+# Which combinations of variables are missing together?
+gg_miss_upset(Training.csv)
+
+# Where are missing values located (the shaded regions in the plot)?
+vis_miss(Training.csv) +
+  theme(axis.text.x = element_text(angle = 80))
+
+```
+
+
+
+Training and saving the ```{STEP 4}
+
+set.seed(7)
+
+# Select columns 3 and 4 for k-means clustering
+#columns_for_clustering <- Training.csv[, c(3, 4)]
+
+# Perform k-means clustering
+to_predict_clusters <- kmeans(Training.csv[, c(3, 4)], centers = 4, nstart = 20)
+
+# Add the cluster assignments to the dataset
+Training.csv$cluster <- to_predict_clusters$cluster
+
+# Visualize the clustering results (modify this based on your requirements)
+# For example, if you want to visualize column 3 against column 4:
+plot(productId ~ quantity, 
+     data = Training.csv, 
+     col = Training.csv$cluster, 
+     main = "Customer Segmentation")
+
+
+train_control <- trainControl(method = "cv", number = 5)
+
+Training.csv  <- Training.csv %>% mutate(cluster = as.factor(cluster))
+
+Training.csv  <- Training.csv %>% select(productId, quantity, cluster)
+
+to_predict_clusters <-
+  train(cluster ~ ., data = Training.csv, method = "svmRadial",
+        metric = "Accuracy", trControl = train_control)
+
+
+
+# Saving the k-means saveRDS(to_predict_clusters, "Training.csv")
+
+
+# The saved can then be loaded later
+to_predict_clusters <- readRDS("Training.csv")
+
+
+```
+
+
+Loading the ```{STEP 5}
+
+#load to_predict_clusters <- readRDS("Training.csv")
+
+```
+
+
+Creating a REST API using Plumber and defining the function
+```{STEP 6}
+
+#Creating the REST API using Plumber
+
+#* @apiTitle Customer Segment Prediction API
+
+#* @apiDescription Used to predict which segment a customer belongs to.
+
+#* @param arg_productId The type of cake
+#* @param arg_qunatity The number of cakes bought
+
+#* @get /segment
+
+
+predict_cluster <- function(arg_productId, arg_quantity) {
+  # Create a data frame using the arguments
+  to_be_predicted <- data.frame(productId = as.numeric(arg_productId), quantity = as.numeric(arg_quantity))
+  
+  # Perform k-means clustering on the input data to obtain clusters
+  # to_be_predicted$cluster <- predict(to_predict_clusters, to_be_predicted)
+  
+  
+  # Predict the cluster using the to_predict_clusters
+  predict(to_predict_clusters, newdata = to_be_predicted)
+}
+
+```
+
+
+Testing the API
+```{STEP 7}
+
+# This allows us to process a plumber API
+api <- plumber::plumb("Training.csv")
+
+# Run the API on a specific port ----
+
+api$run(host = "127.0.0.1", port = 5022)
+
+```
+
+
+
